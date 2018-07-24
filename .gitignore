@@ -1,0 +1,14 @@
+# data
+data/
+
+# log files
+classification/log/
+alsNet/log/
+part_seg/log/
+
+# models
+model.ckpt.*
+*.pickle
+
+#
+*.pyc
