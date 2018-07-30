@@ -7,6 +7,8 @@ under the same name.
 *alsNet* is a neural network framework for classification of point clouds acquired by airborne laser scanning.
 More details can be found in the thesis itself.
 
+![Comparison](bregenz_c1293.png "Comparison between reference (left) and estimated (right) classes. Differences shown in red/green below.")
+
 ### PointNet, PointNet++
 *alsNet* is heavily based on the neural networks of *PointNet* and *PointNet++* by Charles R. Qi et al. from Stanford University.
 This especially concerns the tensorflow operations. 
@@ -47,9 +49,9 @@ To use a trained model on validation data, use the `alsNetEvaluator`. The data h
     alsNet/alsNet/alsNetEvaluator.py --inFile .../data/validate_c*.laz --model .../logs_models/model_1_99.alsNet --arch archs.arch4 --outDir .../predictions/
 
 #### Postprocessing
-Finally, the chunks can be merged together to create a single output file:
+Finally, the chunks can be merged together to create a single output file. For this, the original reference point cloud (where each point appears once) is required:
 
-    alsNet/alsNet/alsNetMerger.py 
+    alsNet/alsNet/alsNetMerger.py --inFiles .../predictions/*.laz --refFile .../input*.laz --outFile .../predictions/merged.laz
 
 ### License
 The code is released under MIT License (see LICENSE file for details).
