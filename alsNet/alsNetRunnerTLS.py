@@ -16,6 +16,18 @@ def exclude_validation_loss(labels, logits):
     classify_loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits, scope='loss', weights=weights)
     return classify_loss
 
+def exclude_validation_loss_weigh_with_priors(labels, logits):
+    priors = np.array([0, 931952, 2520358, 1692719, 35802, 894213, 549558, 10019, 47334] ) # from training data
+    priors = priors/np.sum(priors)
+    priors = 1/np.sqrt(priors)  # use the sqrt inverse of the class histogram as weights as suggested by stefan schmohl
+    priors[0] = 0  # weight of class 0 = 0
+    mask = tf.greater(labels, 10)
+    zeros = tf.zeros_like(labels)
+    labels_remap = tf.where(mask, zeros, labels)
+    weights = tf.gather(priors, labels_remap)
+    classify_loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits, scope='loss', weights=weights)
+    return classify_loss
+
 #Disable TF debug messages
 #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -101,9 +113,11 @@ def main(args):
 
     #print("Building kD tree for batch extraction")
     #tree = KDTree(all_coords, leafsize=100)
+    num_points = all_coords.shape[0]
+    num_batches = num_points // 200000 + 1
+    print("Will work on {} batches".format(num_batches))
 
-    print("Extracting batches as random subsets")
-    idx_perm = np.random.permutation(np.arange(all_coords.shape[0]))
+
 
 
 
@@ -111,7 +125,7 @@ def main(args):
                            arch=arch,
                            learning_rate=lr,
                            dropout=0.55,
-                           loss_fn=exclude_validation_loss)
+                           loss_fn=exclude_validation_loss_weigh_with_priors)
 
     if args.continueModel is not None:
         inst.load_model(args.continueModel)
@@ -123,36 +137,48 @@ def main(args):
                   training_files=[File(inFile),File(testFile), File(valFile)])
 
     for j in range(args.multiTrain):
-        if j > 0:
-            # test current performance
-            new_classes = np.zeros(all_labels.shape) + 50
-            curr_eval_batch = 0
-            for centerX in centersX:
-                for centerY in centersY:
-                    for centerZ in centersZ:
-                        curr_eval_batch += 1
-                        print("Evaluating batch {}/{}".format(curr_eval_batch, num_batches))
-                        center = [centerX, centerY, centerZ]
-                        _, idx = tree.query(center, k=200000)
-                        probs = inst.predict_probability(all_coords[idx, :])
-                        new_classes[idx] = np.argmax(probs, axis=2).T
-            cm = confusion_matrix(all_labels[all_labels >= 20] - 20, new_classes[all_labels>=20], range(10))
-            inst.eval_history.add_history_step(cm, inst._train_points_seen, 0)
+
+        print("Extracting batches as random subsets")
+        idx_perm = np.random.permutation(num_points)
+        all_coords_perm = all_coords[idx_perm, :]
+        all_labels_perm = all_labels[idx_perm, :]
+
+        for curr_training_batch in range(num_batches):
+            idx_start = curr_training_batch * 200000
+            idx_end = (curr_training_batch + 1) * 200000
+            if idx_end >= num_points:
+                idx_start -= (idx_end-num_points+1)
+                idx_end = num_points-1
+
+            print("Training batch {}/{}".format(curr_training_batch, num_batches))
+
+            curr_epoch_coords = all_coords_perm[idx_start:idx_end]
+            curr_epoch_labels = all_labels_perm[idx_start:idx_end]
+
+            inst.fit_one_epoch(curr_epoch_coords, curr_epoch_labels[:, 0])
+            np.savetxt(os.path.join(args.outDir,'sample_output_%d.xyz') % (curr_training_batch), curr_epoch_coords)
             logg.save()
 
-        curr_training_batch = 0
-        for centerX in centersX:
-            for centerY in centersY:
-                for centerZ in centersZ:
-                    curr_training_batch += 1
-                    print("Training batch {}/{}".format(curr_training_batch, num_batches))
-                    center = [centerX, centerY, centerZ]
-                    _, idx = tree.query(center, k=200000)
-                    curr_epoch_coords = all_coords[idx, :]
-                    curr_epoch_labels = all_labels[idx, :]
-                    inst.fit_one_epoch(curr_epoch_coords, curr_epoch_labels[:, 0])
-                    np.savetxt(os.path.join(args.outDir,'sample_output_%.0f_%.0f_%.0f.xyz') % (centerX, centerY, centerZ), curr_epoch_coords)
-                    logg.save()
+            if curr_training_batch % 4 == 1:  # we need to have had _some_ training, so we take mod 1
+                # pick a random batch for validation
+                curr_eval_batch = np.random.choice(num_batches, 1)[0]
+                idx_start = curr_eval_batch * 200000
+                idx_end = (curr_eval_batch + 1) * 200000
+                if idx_end >= num_points:
+                    idx_start -= (idx_end - num_points + 1)
+                    idx_end = num_points - 1
+                print("Evaluating on batch {}".format(curr_eval_batch, num_batches))
+
+                curr_epoch_coords = all_coords_perm[idx_start:idx_end]
+                curr_epoch_labels = all_labels_perm[idx_start:idx_end]
+
+                probs = inst.predict_probability(curr_epoch_coords)
+                new_classes = np.argmax(probs, axis=2).T
+                cm = confusion_matrix(curr_epoch_labels[curr_epoch_labels >= 20] - 20,
+                                      new_classes[curr_epoch_labels >= 20], range(10))
+                inst.eval_history.add_history_step(cm, inst._train_points_seen, 0)
+                logg.save()
+
         inst.save_model(os.path.join(args.outDir, 'models', 'model_%d' % (j), 'alsNet.ckpt'))
 
 
