@@ -18,8 +18,6 @@ import tf_util
 from pointnet_util import pointnet_sa_module, pointnet_fp_module
 
 
-
-
 def simple_loss(labels, logits):
     return tf.losses.sparse_softmax_cross_entropy(labels, logits, scope='loss')
 
@@ -61,7 +59,7 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
 
         self._config = tf.ConfigProto()
         self._config.gpu_options.allow_growth = True
-        self._config.allow_soft_placement = False
+        self._config.allow_soft_placement = True
         self._config.log_device_placement = False
 
         self._train_points_seen = 0
@@ -117,7 +115,7 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         :param is_training: bool.
         :return: last layer of net
         """
-        with tf.variable_scope('dnn'), tf.device('/gpu:0'):
+        with tf.variable_scope('dnn'), tf.device('/device:GPU:0'):
             ln_xyz = [tf.slice(points_in, [0, 0, 0], [-1, -1, 3])]    # point coordinates
             ln_feat = [tf.slice(points_in, [0, 0, 3], [-1, -1, -1])]  # point attributes
 
@@ -190,31 +188,28 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         if self._session:
             self._session.close()
 
+
     def fit_file(self, filenames_in, new_session=True, **kwargs):
         if new_session or self._graph is None:
-            self.close_session()
-            self._train_points_seen = 0
-            self._graph = tf.Graph()
-            with self._graph.as_default():
-                self._build_graph()
-            self._session = tf.Session(graph=self._graph, config=self._config)
-            with self._session.as_default() as sess:
-                sess.run(self._init_op)
+            self.create_graph()
         for filename in filenames_in:
             ds = Dataset(filename)
             self.fit_one_epoch(ds.points_and_features, ds.labels)
         return self
 
+    def create_graph(self):
+        self.close_session()
+        self._train_points_seen = 0
+        self._graph = tf.Graph()
+        with self._graph.as_default():
+            self._build_graph()
+        self._session = tf.Session(graph=self._graph, config=self._config)
+        with self._session.as_default() as sess:
+            sess.run(self._init_op)
+
     def fit(self, datasets, new_session=True):
         if new_session or self._graph is None:
-            self.close_session()
-            self._train_points_seen = 0
-            self._graph = tf.Graph()
-            with self._graph.as_default():
-                self._build_graph()
-            self._session = tf.Session(graph=self._graph, config=self._config)
-            with self._session.as_default() as sess:
-                sess.run(self._init_op)
+            self.create_graph()
         for ds in datasets:
             points_in_single_ds, labels_single_ds = ds.points_and_features, ds.labels
             self.fit_one_epoch(points_in_single_ds, labels_single_ds)

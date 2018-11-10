@@ -49,6 +49,9 @@ arch =[
 
 
 def main(args):
+    #import os
+    #os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
     inlist = args.inList
     threshold = args.threshold
     train_size = args.trainSize
@@ -94,7 +97,7 @@ def main(args):
 
     for j in range(args.multiTrain):
         for i in range(len(datasets_th)//train_size):
-            if i > 0:
+            if i > 0 and i*train_size+1 < len(datasets_th):
                 test_ds = datasets_th[i*train_size+1]
                 inst.test_single(test_ds,
                                  save_to=os.path.join(args.outDir, os.path.basename(test_ds.file).replace(".la", "_test.la")),

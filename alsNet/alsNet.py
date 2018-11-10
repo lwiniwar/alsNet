@@ -24,7 +24,7 @@ def exp_learning_rate(learning_rate, global_step, step, decay, staircase=False):
 
 
 class AlsNetContainer:
-    def __init__(self, logDir, learning_rate=0.01, dropout=0.5, logger=None, dev='/cpu'):
+    def __init__(self, logDir, learning_rate=0.01, dropout=0.5, logger=None, dev='/device:GPU:1'):
         self.logDir = logDir
         if not os.path.exists(self.logDir):
             os.makedirs(self.logDir)
@@ -37,8 +37,8 @@ class AlsNetContainer:
         self.graph = tf.Graph()
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-        config.allow_soft_placement = True
-        config.log_device_placement = False
+        config.allow_soft_placement = False
+        config.log_device_placement = True
         self.sess = tf.Session(config=config, graph=self.graph)
         self.logger = logger
         self.learning_rate = learning_rate
