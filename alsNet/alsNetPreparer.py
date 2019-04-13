@@ -20,7 +20,7 @@ def main(in_files, density, kNN, out_folder, thinFactor):
             d = dataset.kNNBatchDataset(file=file, k=int(kNN*thinFactor), spacing=spacing)
             while True:
                 print("Processing batch %d/%d" % (d.currIdx, d.num_batches))
-                points_and_features, labels = d.getBatches(batch_size=1)
+                points_and_features, labels, centers = d.getBatches(batch_size=1)
                 idx_to_use = np.random.choice(range(int(thinFactor*kNN)), kNN)
                 names = d.names
                 out_name = d.filename.replace('.la', '_c%04d.la' % d.currIdx)  # laz or las
@@ -45,7 +45,7 @@ def main(in_files, density, kNN, out_folder, thinFactor):
                     statlist.append(list_entry)
                     dataset.Dataset.Save(out_path, points_and_features[0][idx_to_use], names,
                                          labels=labels[0][idx_to_use], new_classes=None)
-                else:  # no more data
+                else:
                     break
 
     with open(os.path.join(out_folder, "stats.csv"), "wb") as f:

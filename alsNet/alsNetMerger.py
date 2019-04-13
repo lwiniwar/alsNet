@@ -1,7 +1,7 @@
 import glob
 from argparse import ArgumentParser
 from dataset import Dataset
-from scipy.spatial import kdtree
+from scipy.spatial import cKDTree
 import numpy as np
 import os
 import logging
@@ -51,7 +51,7 @@ def main(in_files, ref_file, out_file, write_probs=True):
         if name == 'estim_class':
             estim_col = idx+3
 
-    tree = kdtree.KDTree(overall_points[:, 0:3])
+    tree = cKDTree(overall_points[:, 0:3])
     idx_processed = []
     for line in range(ref_points.shape[0]):
         if line%10 == 0:
@@ -60,6 +60,8 @@ def main(in_files, ref_file, out_file, write_probs=True):
         multiples = tree.query_ball_point(curr_xyz, r=0.0001, eps=0.0001)
         #print(curr_xyz)
         #print(overall_points[multiples, 0:3])
+        if len(multiples) == 0:
+            continue
         idx_processed += multiples
         out_points.append(curr_xyz)
         out_labels.append(overall_points[multiples[0], -1])

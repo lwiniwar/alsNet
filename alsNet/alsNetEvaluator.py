@@ -16,11 +16,18 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s [%(levelname)s]: %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
+def send_message(msg):
+    try:
+        import tg_notifier
+        tg_notifier.send_message(msg)
+    except:
+        print("Unable to send message.")
 
 def main(args):
     arch = importlib.import_module(args.arch).arch
     normalize = args.normalize
-    model = AlsNetContainer(num_feat=3, num_classes=30, num_points=200000, output_base=args.outDir, arch=arch)
+    model = AlsNetContainer(num_feat=0, num_classes=30, num_points=200000, output_base=args.outDir, arch=arch,
+                           gpu_id=args.gpuID)
     logging.info("Loading pretrained model %s" % args.model)
     model.load_model(args.model)
     datasets = []
@@ -44,6 +51,10 @@ def main(args):
         total_acc += acc
         total_batch += 1
         logging.info("Current avg test accuracy: %.2f%%" % ((total_acc/total_batch) * 100.))
+        #send_message("AlsNetEvaluator: %d / %d (%s curr acc, %s tot acc)" % (idx,
+        #                                                                     len(datasets),
+        #                                                                     acc * 100.,
+        #                                                                    (total_acc/total_batch) * 100.))
         sys.stdout.flush()
 
 
@@ -61,6 +72,8 @@ if __name__ == '__main__':
     parser.add_argument('--outDir', required=True, help='log and output directory')
     parser.add_argument('--normalize', default=1, type=int,
                         help='normalize fields and coordinates [default: 1][1/0]')
+
+    parser.add_argument('--gpuID', default=None, help='which GPU to run on (default: CPU only)')
     args = parser.parse_args()
 
     main(args)

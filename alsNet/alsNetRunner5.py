@@ -1,6 +1,8 @@
 import os, sys
 import numpy as np
+import tensorflow as tf
 import argparse
+import random
 from alsNetRefactored import AlsNetContainer, simple_loss, fp_high_loss
 from alsNetLogger2 import Logger
 from dataset import Dataset
@@ -8,6 +10,18 @@ import importlib
 
 #Disable TF debug messages
 #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+def loss_weigh_with_priors(labels, logits):
+
+    with tf.device('/device:GPU:1'):
+        priors = np.array([27179, 14410, 49261416, 35639219, 8945305,15668147,33529,13,5543,21159,11047,0,0,0,0,751,970,0,0,0,0,0,0,0,0,0,0,0,0,0] ) # from training data (2011_14215202.laz)
+        priors = np.array([600, 98690, 101986, 3708, 7422, 109048, 11224, 24818, 54226] ) # from training data (train.las, 3DVaihingen)
+        priors = (priors+1)/np.sum(priors)
+        priors = 1/np.sqrt(priors)  # use the sqrt inverse of the class histogram as weights as suggested by stefan schmohl
+        weights = tf.gather(priors, labels)
+        classify_loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits, scope='loss', weights=weights)
+        return classify_loss
+
 
 arch =[
     {
@@ -47,6 +61,12 @@ arch =[
         'reverse_mlp': [256,256]
     }, ]
 
+def send_message(msg):
+    try:
+        import tg_notifier
+        tg_notifier.send_message(msg)
+    except:
+        print("Unable to send message.")
 
 def main(args):
     #import os
@@ -82,11 +102,19 @@ def main(args):
     print("%s datasets loaded." % len(datasets_th))
     sys.stdout.flush()
 
-    inst = AlsNetContainer(num_feat=3, num_classes=30, num_points=200000, output_base=args.outDir, score_sample=10,
+    loss_fn = simple_loss
+    if args.lossFn == 'fp_high':
+        loss_fn = fp_high_loss
+    if args.lossFn == 'weights':
+        loss_fn = loss_weigh_with_priors
+
+
+    inst = AlsNetContainer(num_feat=3, num_classes=10, num_points=200000, output_base=args.outDir, score_sample=10,
                            arch=arch,
                            learning_rate=lr,
                            dropout=0.55,
-                           loss_fn=simple_loss if args.lossFn == "simple" else fp_high_loss)
+                           loss_fn=loss_fn,
+                           gpu_id=args.gpuID)
 
     if args.continueModel is not None:
         inst.load_model(args.continueModel)
@@ -96,6 +124,7 @@ def main(args):
                   training_files=datasets_th)
 
     for j in range(args.multiTrain):
+        random.shuffle(datasets_th)
         for i in range(len(datasets_th)//train_size):
             if i > 0 and i*train_size+1 < len(datasets_th):
                 test_ds = datasets_th[i*train_size+1]
@@ -107,8 +136,9 @@ def main(args):
                                                              len(datasets_th)))
             inst.fit(datasets_th[i*train_size:min((i+1)*train_size, len(datasets_th))], new_session=False)
             logg.save()
-        inst.save_model(os.path.join(args.outDir, 'models', 'model_%d_%d' % (j, i), 'alsNet.ckpt'))
-
+        inst.save_model(os.path.join(args.outDir, 'models', 'model_%d' % (j), 'alsNet.ckpt'))
+        send_message("Hmm, der alsNetRunner5 ist jetzt bei Iteration %d" % j)
+    send_message("Hmmm, ich glaub der ist fertig.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -133,6 +163,6 @@ if __name__ == '__main__':
     parser.add_argument('--normalize', default=1, type=int,
                         help='normalize fields and coordinates [default: 1][1/0]')
     # parser.add_argument('--testList', help='list with files to test on')
-    # parser.add_argument('--gpuID', default=None, help='which GPU to run on (default: CPU only)')
+    parser.add_argument('--gpuID', default=None, help='which GPU to run on (default: CPU only)')
     args = parser.parse_args()
     main(args)

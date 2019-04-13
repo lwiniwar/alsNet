@@ -1,7 +1,7 @@
 import numpy as np
 import laspy
 import os
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree as KDTree
 from sklearn.preprocessing import normalize
 import logging
 
@@ -65,6 +65,7 @@ class Dataset():
         if self._xyz is None:
             self.load_data()
         ret_val = np.hstack((self._xyz, self._features))
+        ret_val = self._xyz
         if self.normalize:
             normalize(ret_val)
         return ret_val
@@ -110,7 +111,7 @@ class Dataset():
         outFile.close()
 
     @staticmethod
-    def Save(path, points_and_features, names=None, labels=None, new_classes=None, probs=None):
+    def Save(path, points_and_features, names=None, labels=None, new_classes=None, probs=None, addDims=None):
         hdr = laspy.header.Header()
         outfile = laspy.file.File(path, mode="w", header=hdr)
         if new_classes is not None:
@@ -120,6 +121,10 @@ class Dataset():
         if probs is not None:
             for classid in range(probs.shape[1]):
                 outfile.define_new_dimension(name="prob_class%02d" % classid, data_type=9, description="p of estimated class %02d"%classid)
+        if addDims is not None:
+            for addDim in addDims:
+                outfile.define_new_dimension(name=addDim, data_type=9, description=addDim)
+
 
         allx = points_and_features[:, 0]
         ally = points_and_features[:, 1]
@@ -223,7 +228,7 @@ class kNNBatchDataset(Dataset):
 
     def buildKD(self):
         logging.info(" -- Building kD-Tree with %d points..." % len(self))
-        self.tree = KDTree(self._xyz[:, :2], leafsize=100)  # build only on x/y
+        self.tree = KDTree(self._xyz[:, :2], leafsize=100, balanced_tree=False)  # build only on x/y
         logging.info(" --- kD-Tree built.")
 
 
@@ -237,9 +242,10 @@ class kNNBatchDataset(Dataset):
             self.currIdx += 1
         if centers:
             _, idx = self.tree.query(centers, k=self.k)
-            return self.points_and_features[idx, :], self.labels[idx]
+            return self.points_and_features[idx, :], self.labels[idx], centers
         else:
-            return None, None
+            return None, None, None
+
 
     def getBatchByIdx(self, batch_idx):
         centers = [[self.xmin + self.spacing / 2 + (batch_idx // self.num_cols) * self.spacing,

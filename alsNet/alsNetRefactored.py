@@ -41,7 +41,8 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
                  loss_fn=simple_loss,
                  initalizer=None,
                  arch=None,
-                 score_sample=1):
+                 score_sample=1,
+                 gpu_id = None):
         self.output_dir = output_base
         self.num_classes = num_classes
         self.num_feat = num_feat
@@ -54,6 +55,7 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         self.initalizer = initalizer
         self.arch = arch
         self.score_sample=score_sample
+        self.gpu_id = gpu_id
         self._session = None
         self._graph = None
 
@@ -71,30 +73,38 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         Build the graph
         :return: Nothing
         """
-        # define placeholders
-        # input points
-        points_in = tf.placeholder(tf.float32, shape=(1, self.num_points, self.num_feat + 3), name='points_in')
-        # reference labels
-        labels_ref = tf.placeholder(tf.int64, shape=(1, self.num_points), name='labels_ref')
-        # training flag
-        is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
+        if self.gpu_id is not None:
+            dev = '/device:GPU:%s' % self.gpu_id
+            print("Using GPU%s" % self.gpu_id)
+        else:
+            dev = 'CPU'
+            print("Using CPU")
 
-        # create network
-        logits = self._dnn(points_in, is_training)
+        with tf.device(dev):
+            # define placeholders
+            # input points
+            points_in = tf.placeholder(tf.float32, shape=(1, self.num_points, self.num_feat + 3), name='points_in')
+            # reference labels
+            labels_ref = tf.placeholder(tf.int64, shape=(1, self.num_points), name='labels_ref')
+            # training flag
+            is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
 
-        # get loss
-        loss = self.loss_fn(labels_ref, logits)
+            # create network
+            logits = self._dnn(points_in, is_training)
 
-        # create optimizer
-        optimizer = self.optimizer_cls(learning_rate=self.learning_rate)
+            # get loss
+            loss = self.loss_fn(labels_ref, logits)
 
-        # set operations
-        train_op = optimizer.minimize(loss, name='train')
-        softmax_op = tf.nn.softmax(logits, name='softmax')
+            # create optimizer
+            optimizer = self.optimizer_cls(learning_rate=self.learning_rate)
 
-        # initalize variables
-        init_op = tf.global_variables_initializer()
-        saver = tf.train.Saver()
+            # set operations
+            train_op = optimizer.minimize(loss, name='train')
+            softmax_op = tf.nn.softmax(logits, name='softmax')
+
+            # initalize variables
+            init_op = tf.global_variables_initializer()
+            saver = tf.train.Saver()
 
         # Make important vars/ops availiable instance-wide
         self._points_in = points_in
@@ -115,7 +125,8 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         :param is_training: bool.
         :return: last layer of net
         """
-        with tf.variable_scope('dnn'), tf.device('/device:GPU:0'):
+
+        with tf.variable_scope('dnn'):
             ln_xyz = [tf.slice(points_in, [0, 0, 0], [-1, -1, 3])]    # point coordinates
             ln_feat = [tf.slice(points_in, [0, 0, 3], [-1, -1, -1])]  # point attributes
 

@@ -21,21 +21,21 @@ class_names={
     7: 'Shrub',
     8: 'Tree',
 }
-class_names={
-    2: 'Ground',
-    3: 'Low Veg.',
-    4: 'Med. Veg.',
-    5: 'High Veg.',
-}
-class_names={
-    2: 'Ground',
-    3: 'Low Veg.',
-    4: 'Med. Veg.',
-    5: 'High Veg.',
-    6: 'Building',
-    9: 'Water',
-    -1: 'Other'
-}
+#class_names={
+#    2: 'Ground',
+#    3: 'Low Veg.',
+#    4: 'Med. Veg.',
+#    5: 'High Veg.',
+#}
+#class_names={
+#    2: 'Ground',
+#    3: 'Low Veg.',
+#    4: 'Med. Veg.',
+#    5: 'High Veg.',
+#    6: 'Building',
+#    9: 'Water',
+#    -1: 'Other'
+#}
 
 def get_cm_compressed(cm, keep_classes=(2, 3, 4, 5, 6, 9), delete=False):
     """
@@ -63,7 +63,7 @@ def over_gt(cm):
     return (cm.T/ np.sum(cm, axis=1)).T
 
 def main(tile_id):
-    input_files = r"D:\91_classes\10_MSc\04_results\VSC\4\test20\2011_%s_c*.laz"% tile_id
+    input_files = r"%s"% tile_id
     #input_files = r"D:\91_classes\10_MSc\04_results\VSC\28\test36\area1_aoi_c*_test.laz"
     #input_files = r"D:\91_classes\10_MSc\04_results\VSC\32\test33\merge.las"
 
@@ -83,12 +83,12 @@ def main(tile_id):
         eval_cm = confusion_matrix(labels, classes, range(30))
         cm_sum += eval_cm
 
-    keep_classes = (2,3,4,5,6,9)#(2,3,4,5) #(0, 1, 2, 3, 4, 5, 6, 7, 8)
+    keep_classes = (0, 1, 2, 3, 4, 5, 6, 7, 8)
     # confusion matrix plot
     print("Plotting")
     fig = plt.figure(figsize=(10, 10))
-    num_classes = len(keep_classes) + 1
-    keep_classes_e = keep_classes + (-1,)
+    num_classes = len(keep_classes) #+ 1
+    keep_classes_e = keep_classes #+ (-1,)
     gs = gridspec.GridSpec(num_classes, num_classes)
 
     cm_sum = get_cm_compressed(cm_sum, keep_classes, delete=True)
@@ -155,12 +155,12 @@ def main(tile_id):
     fig.text(0.06, 0.5, 'Ground truth', ha='center', va='center', rotation='vertical',  fontweight='bold')
 
     plt.subplots_adjust(hspace=.0, wspace=.0)
-    plt.savefig((r"D:\91_classes\10_MSc\04_results\VSC\4\test20\2011_%s_cm3.png" % tile_id).replace("*", "all"))
+    plt.savefig((r"%s_cm3.png" % tile_id).replace("*", "all"))
     #plt.savefig((r"D:\91_classes\10_MSc\04_results\VSC\28\test36\conf.png"))
     #plt.savefig(r"D:\91_classes\10_MSc\04_results\VSC\32\test33\merge.png")
 
-main('13235203')
-main('13245200')
-main('13205000')
-main('11275100')
-main('*')
+#main('13235203')
+#main('13245200')
+#main('13205000')
+#main('11275100')
+main(sys.argv[1])

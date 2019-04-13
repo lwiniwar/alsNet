@@ -9,7 +9,7 @@ import importlib
 from collections import namedtuple
 
 from scipy.spatial import KDTree
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score
 
 def exclude_validation_loss(labels, logits):
     weights = tf.where((labels >= 10), np.zeros(labels.shape), np.ones(labels.shape))
@@ -32,41 +32,59 @@ def exclude_validation_loss_weigh_with_priors(labels, logits):
 #os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 default_arch =[
-    {
-        'npoint': 8192,
-        'radius': 0.25,
-        'nsample': 16,
-        'mlp': [64, 128, 128],
-        'pooling': 'max',
-        'mlp2': None,
-        'reverse_mlp': [128,64]
-    },
-    {
-        'npoint': 4096,
-        'radius': 0.5,
-        'nsample': 16,
-        'mlp': [128, 256, 256],
-        'pooling': 'max',
-        'mlp2': None,
-        'reverse_mlp': [256,256]
-    },
+   # {
+   #     'npoint': 8192*2,
+   #     'radius': 0.01,
+   #     'nsample': 16,
+   #     'mlp': [64, 128, 128],
+   #     'pooling': 'max_and_avg',
+   #     'mlp2': None,
+   #     'reverse_mlp': [128,128]
+   # },
+   # {
+   #     'npoint': 4096*2,
+   #     'radius': 0.05,
+   #     'nsample': 16,
+   #     'mlp': [128, 256, 256],
+   #     'pooling': 'max_and_avg',
+   #     'mlp2': None,
+   #     'reverse_mlp': [256,256]
+   # },
+   # {
+   #     'npoint': 2048,
+   #     'radius': 0.1,
+   #     'nsample': 16,
+   #     'mlp': [256, 512, 512],
+   #     'pooling': 'max_and_avg',
+   #     'mlp2': None,
+   #     'reverse_mlp': [512,512]
+   # },
     {
         'npoint': 2048,
-        'radius': 1,
-        'nsample': 16,
-        'mlp': [128, 256, 256],
-        'pooling': 'max',
+        'radius': 0.5,
+        'nsample': 32,
+        'mlp': [256, 512, 512],
+        'pooling': 'max_and_avg',
         'mlp2': None,
-        'reverse_mlp': [256,256]
+        'reverse_mlp': [512,512]
     },
     {
         'npoint': 512,
-        'radius': 2,
-        'nsample': 32,
-        'mlp': [128, 512, 256],
-        'pooling': 'max',
+        'radius': 1,
+        'nsample': 64,
+        'mlp': [512, 1024, 1024],
+        'pooling': 'max_and_avg',
         'mlp2': None,
-        'reverse_mlp': [256,256]
+        'reverse_mlp': [1024,1024]
+    },
+    {
+        'npoint': 256,
+        'radius': 2,
+        'nsample': 64,
+        'mlp': [512, 1024, 1024],
+        'pooling': 'max_and_avg',
+        'mlp2': None,
+        'reverse_mlp': [1024,1024]
     }, ]
 
 File = namedtuple('File', 'file')
@@ -80,6 +98,8 @@ def main(args):
     valFile = args.valFile
     lr = args.learningRate
     normalize_vals = args.normalize == 1
+    eval_only = args.evaluate_only == 1
+
     arch = importlib.import_module(args.archFile).arch if args.archFile else default_arch
 
     print("Loading files")
@@ -89,34 +109,19 @@ def main(args):
 
     val_data = np.loadtxt(valFile)
     val_coords = val_data[:, 0:3]
-    val_labels = val_data[:, 3] + 20
+    val_labels = val_data[:, 3] + 10
 
     test_data = np.loadtxt(testFile)
     test_coords = test_data[:, 0:3]
-    test_labels = test_data[:, 3] + 10
+    test_labels = test_data[:, 3] + 20
 
     all_coords = np.vstack((train_coords, val_coords, test_coords))
     all_labels = np.expand_dims(np.hstack((train_labels, val_labels, test_labels)), -1)
 
-    minx = np.min(all_coords[:, 0])
-    miny = np.min(all_coords[:, 1])
-    minz = np.min(all_coords[:, 2])
-    maxx = np.max(all_coords[:, 0])
-    maxy = np.max(all_coords[:, 1])
-    maxz = np.max(all_coords[:, 2])
 
-    #centersX = np.arange(minx, maxx, args.stepX)
-    #centersY = np.arange(miny, maxy, args.stepY)
-    #centersZ = np.arange(minz, maxz, args.stepZ)
-    #num_batches = len(centersX) * len(centersY) * len(centersZ)
-    #print("Will work on {} batches".format(num_batches))
-
-    #print("Building kD tree for batch extraction")
-    #tree = KDTree(all_coords, leafsize=100)
     num_points = all_coords.shape[0]
     num_batches = num_points // 200000 + 1
     print("Will work on {} batches".format(num_batches))
-
 
 
 
@@ -125,7 +130,8 @@ def main(args):
                            arch=arch,
                            learning_rate=lr,
                            dropout=0.55,
-                           loss_fn=exclude_validation_loss_weigh_with_priors)
+                           loss_fn=exclude_validation_loss_weigh_with_priors,
+                           gpu_id=0)
 
     if args.continueModel is not None:
         inst.load_model(args.continueModel)
@@ -142,6 +148,74 @@ def main(args):
         idx_perm = np.random.permutation(num_points)
         all_coords_perm = all_coords[idx_perm, :]
         all_labels_perm = all_labels[idx_perm, :]
+
+
+        #remove classes 4,7,8 as requested by ash
+        all_coords_perm = all_coords_perm[all_labels_perm[:, 0] != 4, :]
+        all_labels_perm = all_labels_perm[all_labels_perm[:, 0] != 4, :]
+        all_coords_perm = all_coords_perm[all_labels_perm[:, 0] != 7, :]
+        all_labels_perm = all_labels_perm[all_labels_perm[:, 0] != 7, :]
+        all_coords_perm = all_coords_perm[all_labels_perm[:, 0] != 8, :]
+        all_labels_perm = all_labels_perm[all_labels_perm[:, 0] != 8, :]
+
+        all_labels_perm[all_labels_perm[:, 0] == 15, :] = 16
+        all_labels_perm[all_labels_perm[:, 0] == 14, :] = 15
+        all_labels_perm[all_labels_perm[:, 0] == 25, :] = 26
+        all_labels_perm[all_labels_perm[:, 0] == 24, :] = 25
+
+        num_points = all_coords_perm.shape[0]
+        num_batches = num_points // 200000 + 1
+
+        if eval_only:
+            print("Evaluating all batches, extracting validation samples and creating confusion matrix")
+            result_labels = np.zeros(all_labels_perm.shape)
+
+            for curr_eval_batch in range(num_batches):
+                idx_start = curr_eval_batch * 200000
+                idx_end = (curr_eval_batch + 1) * 200000
+                if idx_end >= num_points:
+                    idx_start -= (idx_end - num_points + 1)
+                    idx_end = num_points - 1
+
+
+                curr_epoch_coords = all_coords_perm[idx_start:idx_end]
+
+                print("Evaluating batch {}/{}".format(curr_eval_batch, num_batches))
+                probs = inst.predict_probability(curr_epoch_coords)
+                new_classes = np.argmax(probs, axis=2).T
+                result_labels[idx_start:idx_end] = new_classes
+
+            cm = confusion_matrix(all_labels_perm[all_labels_perm >= 20] - 20,
+                                  result_labels[all_labels_perm >= 20], range(10))
+            loc = (all_labels_perm >= 20)
+            val_coords = all_coords_perm[loc[:, 0], :]
+            val_labels = np.expand_dims(all_labels_perm[loc] - 20, -1)
+            val_predictions = np.expand_dims(result_labels[loc], -1)
+
+            print(val_coords.shape)
+            print(val_labels.shape)
+            print(val_predictions.shape)
+            np.savetxt(os.path.join(args.outDir, 'eval_points.xyz'), np.hstack((val_coords, val_labels, val_predictions)))
+            np.savetxt(os.path.join(args.outDir, 'eval_cm.txt'), cm)
+            prec = np.zeros(10)
+            sens = np.zeros(10)
+            for i in range(10):
+                prec[i] = cm[i,i]/np.sum(cm[:, i])
+                sens[i] = cm[i,i]/np.sum(cm[i, :])
+            f1 = 2 * prec * sens / (prec + sens)
+            acc = np.diag(cm) / np.sum(cm, axis=0)
+            oa = np.nansum(acc * np.sum(cm, axis=0) / np.sum(cm))
+            np.savetxt(os.path.join(args.outDir, 'eval_prec.txt'), prec)
+            np.savetxt(os.path.join(args.outDir, 'eval_sens.txt'), sens)
+            np.savetxt(os.path.join(args.outDir, 'eval_f1.txt'), f1)
+            np.savetxt(os.path.join(args.outDir, 'eval_acc.txt'), acc)
+            print("Overall accuracy: {:.3f}%".format(oa*100))
+            print("F1-Scores: \n", f1)
+
+
+            exit(0)
+
+
 
         for curr_training_batch in range(num_batches):
             idx_start = curr_training_batch * 200000
@@ -174,8 +248,8 @@ def main(args):
 
                 probs = inst.predict_probability(curr_epoch_coords)
                 new_classes = np.argmax(probs, axis=2).T
-                cm = confusion_matrix(curr_epoch_labels[curr_epoch_labels >= 20] - 20,
-                                      new_classes[curr_epoch_labels >= 20], range(10))
+                cm = confusion_matrix(curr_epoch_labels[np.logical_and(curr_epoch_labels >= 10, curr_epoch_labels < 20)] - 10,
+                                      new_classes[np.logical_and(curr_epoch_labels >= 10, curr_epoch_labels < 20)], range(10))
                 inst.eval_history.add_history_step(cm, inst._train_points_seen, 0)
                 logg.save()
 
@@ -204,6 +278,8 @@ if __name__ == '__main__':
                         help='continue training an existing model [default: start new model]')
     parser.add_argument('--normalize', default=1, type=int,
                         help='normalize fields and coordinates [default: 1][1/0]')
+    parser.add_argument('--evaluate_only', default=0, type=int,
+                        help='evaluate the data [default: 1][1/0]')
 
     parser.add_argument('--archFile', default="", type=str,
                        help='architecture file to import [default: default architecture]')
