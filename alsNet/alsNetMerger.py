@@ -1,7 +1,8 @@
 import glob
 from argparse import ArgumentParser
 from dataset import Dataset
-from scipy.spatial import kdtree
+from scipy.spatial import ckdtree
+from sklearn import metrics
 import numpy as np
 import os
 import logging
@@ -51,16 +52,20 @@ def main(in_files, ref_file, out_file, write_probs=True):
         if name == 'estim_class':
             estim_col = idx+3
 
-    tree = kdtree.KDTree(overall_points[:, 0:3])
+    tree = ckdtree.cKDTree(overall_points[:, 0:3])
     idx_processed = []
     for line in range(ref_points.shape[0]):
         if line%10 == 0:
-            logging.info("Currently in line %d from %d" % (line, ref_points.shape[0]))
+            #logging.info("Currently in line %d from %d" % (line, ref_points.shape[0]))
+            pass
         curr_xyz = ref_points[line,:]
         multiples = tree.query_ball_point(curr_xyz, r=0.0001, eps=0.0001)
         #print(curr_xyz)
         #print(overall_points[multiples, 0:3])
         idx_processed += multiples
+        if len(multiples) == 0:
+            logging.info("Point missing: %s" % curr_xyz)
+            continue
         out_points.append(curr_xyz)
         out_labels.append(overall_points[multiples[0], -1])
         avg_feats = np.mean(overall_points[multiples, 3:-1], axis=0)
@@ -79,10 +84,19 @@ def main(in_files, ref_file, out_file, write_probs=True):
     names.append('count')
     #attr_avg = np.sum(out_attrs, axis=1)/out_counts
     out_labels = np.array(out_labels).astype(np.int)
-    Dataset.Save(out_file, np.hstack((out_points, out_attrs, out_meanvar, out_counts)), names, labels=out_labels, new_classes=new_max_class, addDims=addDims + ['meanvar', 'count'])
+    Dataset.Save(out_file, np.hstack((out_points, out_attrs, out_meanvar, out_counts)), names, labels=out_labels, new_classes=new_max_class,
+                 )#addDims=addDims + ['meanvar', 'count'])
     #staticstics
     pre_acc = np.count_nonzero(overall_points[:, estim_col] == overall_points[:, -1]) / overall_points.shape[0]
     post_acc = np.count_nonzero(new_max_class == out_labels) / len(out_points)
+    post_cm = metrics.confusion_matrix(out_labels, new_max_class)
+    post_prec = metrics.precision_score(out_labels, new_max_class, average=None)
+    post_recall = metrics.recall_score(out_labels, new_max_class, average=None)
+    post_f1 = metrics.f1_score(out_labels, new_max_class, average=None)
+    np.savetxt(out_file + '_cm.txt', post_cm, fmt='%.4f')
+    np.savetxt(out_file + '_prec.txt', post_prec, fmt='%.4f')
+    np.savetxt(out_file + '_recall.txt', post_recall, fmt='%.4f')
+    np.savetxt(out_file + '_f1.txt', post_f1, fmt='%.4f')
     logging.info("Finished. Pre-acc: %.3f | Post-acc: %.3f" % (pre_acc, post_acc))
 
 
