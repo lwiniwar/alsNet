@@ -1,7 +1,7 @@
 ## alsNet: Classification of 3D Point Clouds using Deep Neural Networks
 
 This is the code repository accompanying the diploma thesis that was 
-carried out at the <a href="photo.geo.tuwien.ac.at">Research Group Photogrammetry</a> of TU Wien 
+carried out at the <a href="https://photo.geo.tuwien.ac.at">Research Group Photogrammetry</a> of TU Wien 
 under the same name.
 
 *alsNet* is a neural network framework for classification of point clouds acquired by airborne laser scanning.
