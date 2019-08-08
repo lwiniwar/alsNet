@@ -29,6 +29,7 @@ def main(args):
     for filepattern in args.inFiles:
         for file in glob.glob(filepattern):
             datasets.append(Dataset(file, load=False, normalize=normalize))
+            logging.info("File %s loaded" % file)
     total_acc = 0
     total_batch = 0
     for idx, dataset in enumerate(datasets):

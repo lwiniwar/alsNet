@@ -64,6 +64,7 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         self._config.allow_soft_placement = False
         self._config.log_device_placement = False
 
+        self.savefiles = True
         self._train_points_seen = 0
         self.train_history = AlsNetHistory()
         self.eval_history = AlsNetHistory()
@@ -119,7 +120,13 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
         """
         with tf.variable_scope('dnn'), tf.device('/gpu:0'):
             ln_xyz = [tf.slice(points_in, [0, 0, 0], [-1, -1, 3])]    # point coordinates
+            ln_feat_in = [tf.slice(points_in, [0, 0, 3], [-1, -1, -1])]  # point attributes
             ln_feat = [tf.slice(points_in, [0, 0, 3], [-1, -1, -1])]  # point attributes
+
+            if self.savefiles:
+                self._ln_xyz = ln_xyz
+                self._ln_feat_in = ln_feat_in
+                self._ln_feat = ln_feat
 
             for depth, step_dict in enumerate(self.arch):  # set abstraction
                 xyz, feat = self._pointnet_sa(step_dict,
@@ -128,6 +135,7 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
                                               'sa_layer_%d' % (depth + 1))
                 ln_xyz.append(xyz)
                 ln_feat.append(feat)
+                ln_feat_in.append(feat)
 
             for depth, step_dict in enumerate(reversed(self.arch)):  # feature propagation
                 depth = len(self.arch) - depth
@@ -238,8 +246,15 @@ class AlsNetContainer(BaseEstimator, ClassifierMixin):
             raise NotFittedError("This %s instance is not fitted yet" % self.__class__.__name__)
         with self._session.as_default() as sess:
             points_in = np.expand_dims(points_in, 0)
-            return self._softmax_op.eval(feed_dict={self._points_in: points_in,
+            softmax, feat, feat_in, xyz = sess.run((self._softmax_op, self._ln_feat, self._ln_feat_in, self._ln_xyz), feed_dict={self._points_in: points_in,
                                                     self._is_training: False})
+            if self.savefiles:
+                for level, x in enumerate(xyz):
+                    print(xyz[level][0], feat[level][0])
+                    print(xyz[level][0].shape, feat[level][0].shape)
+                    np.savetxt(os.path.join(self.output_dir, 'xyz%i.xyz' % level), np.hstack((xyz[level][0], feat[level][0])))
+                    np.savetxt(os.path.join(self.output_dir, 'xyz%i_in.xyz' % level), np.hstack((xyz[level][0], feat_in[level][0])))
+            return softmax
 
     def predict_one_epoch(self, points_in):
         class_indices = np.argmax(self.predict_probability(points_in), axis=2)
